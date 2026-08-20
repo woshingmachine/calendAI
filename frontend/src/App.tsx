@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 function App() {
   const [request, setRequest] = useState('')
+  const [result, setResult] = useState<any>(null)
 
   async function handleSchedule() {
     const response = await fetch('/api', {
@@ -13,12 +14,15 @@ function App() {
     })
 
     const result = await response.json()
-    console.log(result)
+    setResult(result)
   }
 
   return (
     <main>
       <h1>CalendAI</h1>
+      <button onClick={() => console.log("Google login clicked")}>
+        Connect Google Calendar
+      </button>
       <p>What would you like to schedule?</p>
 
       <textarea
@@ -33,6 +37,19 @@ function App() {
       <button onClick={handleSchedule}>
         Schedule
       </button>
+
+      {result && (
+        <div>
+          <h2>Event preview</h2>
+          <p>Title: {result.title}</p>
+          <p>Dates: {result.dates.join(', ')}</p>
+          <p>Time: {result.time}</p>
+          <button onClick={() => console.log("Confirmed:", result)}>
+            Confirm & Add to Calendar
+          </button>
+        </div>
+      )}
+
     </main>
   )
 }
