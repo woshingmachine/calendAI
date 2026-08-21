@@ -133,6 +133,65 @@ cd backend
 npx wrangler deploy --dry-run
 ```
 
+## 24/7 Deployment
+
+The app does not need your laptop running in production. Deploy the backend as a Cloudflare Worker and the frontend as a Cloudflare Pages site. GitHub Pages can host the static frontend, but Cloudflare Pages keeps the frontend and Worker in the same platform and makes environment-variable configuration easier.
+
+### Deploy the Worker
+
+From `backend/`, configure the production secrets:
+
+```bash
+npx wrangler secret put GROQ_API_KEY
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+npx wrangler secret put TOKEN_ENCRYPTION_KEY
+```
+
+Set the production variables in the Cloudflare Worker dashboard or Wrangler environment configuration:
+
+```text
+FRONTEND_URL=https://your-calendai.pages.dev
+GOOGLE_REDIRECT_URI=https://your-calendai-worker.workers.dev/oauth/callback
+```
+
+Apply the D1 migration and deploy:
+
+```bash
+npx wrangler d1 migrations apply calendai-db --remote
+npx wrangler deploy
+```
+
+The deployed Worker URL is the value used for `VITE_BACKEND_URL` in the frontend.
+
+### Deploy the Frontend
+
+In Cloudflare Pages, create a project connected to this GitHub repository with:
+
+```text
+Root directory: frontend
+Build command: npm run build
+Build output directory: dist
+```
+
+Add this Pages environment variable for production:
+
+```text
+VITE_BACKEND_URL=https://your-calendai-worker.workers.dev
+```
+
+After the first Pages deployment, copy its URL into the Worker `FRONTEND_URL` variable and redeploy the Worker.
+
+### Production OAuth URI
+
+Add this exact URI to the Google OAuth client in Google Cloud Console:
+
+```text
+https://your-calendai-worker.workers.dev/oauth/callback
+```
+
+The Google redirect URI, `GOOGLE_REDIRECT_URI`, and the deployed Worker callback must match exactly.
+
 ## Security Notes
 
 - Never commit `backend/.dev.vars`, `frontend/.env.local`, service-account files, or API keys.

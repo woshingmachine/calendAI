@@ -162,8 +162,9 @@ export default {
       const destination = new URL(frontendUrl)
       destination.searchParams.set("auth", "success")
       const secure = requestUrl.protocol === "https:" ? "; Secure" : ""
+      const sameSite = requestUrl.protocol === "https:" ? "None" : "Lax"
       const responseHeaders = new Headers({ Location: destination.toString() })
-      responseHeaders.append("Set-Cookie", `session_id=${sessionId}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${secure}`)
+      responseHeaders.append("Set-Cookie", `session_id=${sessionId}; HttpOnly; SameSite=${sameSite}; Path=/; Max-Age=2592000${secure}`)
       responseHeaders.append("Set-Cookie", `oauth_state=; HttpOnly; SameSite=Lax; Path=/oauth; Max-Age=0${secure}`)
       return new Response(null, { status: 302, headers: responseHeaders })
     }
