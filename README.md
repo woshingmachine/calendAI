@@ -29,6 +29,18 @@ If successful, events are created in your Google Calendar.
 - Event duration is supported through durationMinutes.
   If no duration is detected, default is 60 minutes.
 
+## Current features
+
+- Natural language processing
+- Adding events to calendars
+- Persistent login
+
+## Planned to add
+
+- Edit, delete capabilities
+- UI updates
+- PWA support
+
 ## Troubleshooting
 
 If Connect Google Calendar works but adding events fails:
