@@ -1,6 +1,6 @@
 # calendAI
 
-CalendAI lets you type natural-language plans and add them to Google Calendar.
+CalendAI lets you type natural-language plans and add them to Google Calendar. (https://calendai/pages/dev)
 
 Example requests:
 
