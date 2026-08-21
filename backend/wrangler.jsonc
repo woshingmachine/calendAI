@@ -4,7 +4,8 @@
   "compatibility_date": "2026-08-20",
 
   "vars": {
-    "FRONTEND_URL": "https://calendai.pages.dev"
+    "FRONTEND_URL": "https://calendai.pages.dev",
+    "GOOGLE_REDIRECT_URI": "https://calendai-backend.joshwangkk.workers.dev/oauth/callback"
   },
 
   "d1_databases": [
