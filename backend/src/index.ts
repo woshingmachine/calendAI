@@ -200,6 +200,25 @@ export default {
       return Response.json({ success: true }, { headers: responseHeaders })
     }
 
+    if (requestUrl.pathname === "/oauth/logout") {
+      const sessionId = getCookie(request, "session_id")
+      if (sessionId) {
+        await env.DB.prepare("DELETE FROM sessions WHERE id = ?").bind(sessionId).run()
+      }
+
+      const destination = new URL(frontendUrl)
+      destination.searchParams.set("auth", "logged-out")
+      const secure = requestUrl.protocol === "https:" ? "; Secure" : ""
+      const sameSite = requestUrl.protocol === "https:" ? "None" : "Lax"
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: destination.toString(),
+          "Set-Cookie": `session_id=; HttpOnly; SameSite=${sameSite}; Path=/; Max-Age=0${secure}`,
+        },
+      })
+    }
+
     if (requestUrl.pathname === "/api/events" && request.method === "POST") {
       try {
         const session = await getSession(request, env, true)

@@ -50,18 +50,12 @@ function App() {
         Connect Google Calendar
       </button>
       <button
-        onClick={async () => {
+        onClick={() => {
           setAuthStatus('Logging out...')
-          try {
-            await fetch(`${BACKEND_URL}/api/auth/logout`, {
-              method: 'POST',
-              credentials: 'include',
-            })
-            await refreshAuthStatus()
-            setAuthStatus('Logged out.')
-          } catch {
-            setAuthStatus('Logout failed.')
-          }
+          setConnected(false)
+          setResult(null)
+          setEventStatus('')
+          window.location.href = `${BACKEND_URL}/oauth/logout`
         }}
       >
         Log Out
