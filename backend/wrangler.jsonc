@@ -4,7 +4,7 @@
   "compatibility_date": "2026-08-20",
 
   "vars": {
-    "FRONTEND_URL": "https://calendai.dev"
+    "FRONTEND_URL": "https://calendai.pages.dev"
   },
 
   "d1_databases": [
