@@ -7,6 +7,8 @@ function App() {
   const [request, setRequest] = useState('')
   const [result, setResult] = useState<any>(null)
   const [connected, setConnected] = useState(false)
+  const [eventStatus, setEventStatus] = useState('')
+  const [addingEvents, setAddingEvents] = useState(false)
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/auth/status`, { credentials: 'include' })
@@ -64,27 +66,38 @@ function App() {
           <button
             onClick={async () => {
               if (!connected) {
-                alert("Please connect Google Calendar first.")
+                setEventStatus("Please connect Google Calendar first.")
                 return
               }
 
-              const response = await fetch(`${BACKEND_URL}/api/events`, {
-                method: "POST",
-                credentials: "include",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(result),
-              })
+              setAddingEvents(true)
+              setEventStatus('Adding events...')
+              try {
+                const response = await fetch(`${BACKEND_URL}/api/events`, {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(result),
+                })
 
-              if (!response.ok) {
-                alert("Could not add events to Google Calendar.")
-                return
+                const data = await response.json() as { error?: string }
+                if (!response.ok) {
+                  setEventStatus(data.error ?? "Could not add events to Google Calendar.")
+                  return
+                }
+
+                setEventStatus("Events added to Google Calendar!")
+              } catch {
+                setEventStatus("Could not reach the calendar backend.")
+              } finally {
+                setAddingEvents(false)
               }
-
-              alert("Events added to Google Calendar!")
             }}
+            disabled={addingEvents}
           >
             Confirm & Add to Calendar
           </button>
+          {eventStatus && <p role="status">{eventStatus}</p>}
         </div>
       )}
 

@@ -174,29 +174,36 @@ export default {
     }
 
     if (requestUrl.pathname === "/api/events" && request.method === "POST") {
-      const userId = await getSessionUserId(request, env)
-      if (!userId) return Response.json({ error: "Not connected" }, { status: 401, headers })
-      const tokenRow = await env.DB.prepare("SELECT encrypted_refresh_token FROM oauth_tokens WHERE user_id = ?").bind(userId).first<{ encrypted_refresh_token: string }>()
-      if (!tokenRow) return Response.json({ error: "Google account is not connected" }, { status: 401, headers })
-      const accessToken = await refreshAccessToken(await decryptToken(tokenRow.encrypted_refresh_token, env.TOKEN_ENCRYPTION_KEY), env)
-      const body = (await request.json()) as { action?: string; title?: string; dates?: string[]; time?: string; eventId?: string }
+      try {
+        const userId = await getSessionUserId(request, env)
+        if (!userId) return Response.json({ error: "Not connected" }, { status: 401, headers })
+        const tokenRow = await env.DB.prepare("SELECT encrypted_refresh_token FROM oauth_tokens WHERE user_id = ?").bind(userId).first<{ encrypted_refresh_token: string }>()
+        if (!tokenRow) return Response.json({ error: "Google account is not connected" }, { status: 401, headers })
+        const refreshToken = await decryptToken(tokenRow.encrypted_refresh_token, env.TOKEN_ENCRYPTION_KEY)
+        const accessToken = await refreshAccessToken(refreshToken, env)
+        const body = (await request.json()) as { action?: string; title?: string; dates?: string[]; time?: string; eventId?: string }
 
-      if (body.action === "delete" && body.eventId) {
-        const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(body.eventId)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } })
-        if (!response.ok) return Response.json({ error: "Could not delete event" }, { status: 502, headers })
-        return Response.json({ success: true }, { headers })
-      }
-      if (!body.title || !body.time || !body.dates?.length) return Response.json({ error: "Invalid event" }, { status: 400, headers })
+        if (body.action === "delete" && body.eventId) {
+          const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(body.eventId)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } })
+          if (!response.ok) return Response.json({ error: "Google rejected the delete request" }, { status: 502, headers })
+          return Response.json({ success: true }, { headers })
+        }
+        if (!body.title || !body.time || !body.dates?.length) return Response.json({ error: "Invalid event" }, { status: 400, headers })
 
-      const created = []
-      for (const date of body.dates) {
-        const start = new Date(`${date}T${body.time}:00+08:00`)
-        const event = { summary: body.title, start: { dateTime: start.toISOString(), timeZone: "Asia/Singapore" }, end: { dateTime: new Date(start.getTime() + 60 * 60 * 1000).toISOString(), timeZone: "Asia/Singapore" } }
-        const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(event) })
-        if (!response.ok) return Response.json({ error: "Could not create event" }, { status: 502, headers })
-        created.push(await response.json())
+        const created = []
+        for (const date of body.dates) {
+          const start = new Date(`${date}T${body.time}:00+08:00`)
+          if (Number.isNaN(start.getTime())) return Response.json({ error: "Invalid event date or time" }, { status: 400, headers })
+          const event = { summary: body.title, start: { dateTime: start.toISOString(), timeZone: "Asia/Singapore" }, end: { dateTime: new Date(start.getTime() + 60 * 60 * 1000).toISOString(), timeZone: "Asia/Singapore" } }
+          const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(event) })
+          if (!response.ok) return Response.json({ error: "Google rejected the event request" }, { status: 502, headers })
+          created.push(await response.json())
+        }
+        return Response.json({ success: true, events: created }, { headers })
+      } catch (error) {
+        console.error("Calendar event request failed", error)
+        return Response.json({ error: "Calendar request failed" }, { status: 502, headers })
       }
-      return Response.json({ success: true, events: created }, { headers })
     }
 
     if (requestUrl.pathname === "/api/parse" && request.method === "POST") {
