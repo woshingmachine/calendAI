@@ -2,6 +2,11 @@
   "name": "calendai-backend",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-20",
+
+  "vars": {
+    "FRONTEND_URL": "https://calendai.com"
+  },
+
   "d1_databases": [
     {
       "binding": "DB",
