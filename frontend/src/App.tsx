@@ -9,12 +9,20 @@ function App() {
   const [connected, setConnected] = useState(false)
   const [eventStatus, setEventStatus] = useState('')
   const [addingEvents, setAddingEvents] = useState(false)
+  const [authStatus, setAuthStatus] = useState('')
+
+  async function refreshAuthStatus() {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/auth/status`, { credentials: 'include' })
+      const data = await response.json() as { connected?: boolean }
+      setConnected(Boolean(data.connected))
+    } catch {
+      setConnected(false)
+    }
+  }
 
   useEffect(() => {
-    fetch(`${BACKEND_URL}/api/auth/status`, { credentials: 'include' })
-      .then((response) => response.json())
-      .then((data: { connected?: boolean }) => setConnected(Boolean(data.connected)))
-      .catch(() => setConnected(false))
+    refreshAuthStatus()
   }, [])
 
   async function handleSchedule() {
@@ -41,6 +49,25 @@ function App() {
       >
         Connect Google Calendar
       </button>
+      <button
+        onClick={async () => {
+          setAuthStatus('Logging out...')
+          try {
+            await fetch(`${BACKEND_URL}/api/auth/logout`, {
+              method: 'POST',
+              credentials: 'include',
+            })
+            await refreshAuthStatus()
+            setAuthStatus('Logged out.')
+          } catch {
+            setAuthStatus('Logout failed.')
+          }
+        }}
+      >
+        Log Out
+      </button>
+      {authStatus && <p role="status">{authStatus}</p>}
+      <p>Connection status: {connected ? 'Connected' : 'Not connected'}</p>
 
       <p>What would you like to schedule?</p>
 

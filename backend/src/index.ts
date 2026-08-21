@@ -15,6 +15,8 @@ interface GoogleTokens {
   refresh_token?: string
 }
 
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
+
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
@@ -69,13 +71,25 @@ function corsHeaders(frontendUrl: string) {
   }
 }
 
-async function getSessionUserId(request: Request, env: Env) {
+function sessionExpiresAt() {
+  return new Date(Date.now() + SESSION_TTL_MS).toISOString()
+}
+
+async function getSession(request: Request, env: Env, extend = false) {
   const sessionId = getCookie(request, "session_id")
   if (!sessionId) return null
   const row = await env.DB.prepare("SELECT user_id FROM sessions WHERE id = ? AND expires_at > ?")
     .bind(sessionId, new Date().toISOString())
     .first<{ user_id: string }>()
-  return row?.user_id ?? null
+  if (!row) return null
+
+  if (extend) {
+    await env.DB.prepare("UPDATE sessions SET expires_at = ? WHERE id = ?")
+      .bind(sessionExpiresAt(), sessionId)
+      .run()
+  }
+
+  return { sessionId, userId: row.user_id }
 }
 
 async function refreshAccessToken(refreshToken: string, env: Env) {
@@ -156,7 +170,7 @@ export default {
         .bind(user.id, encryptedToken, now, now).run()
 
       const sessionId = crypto.randomUUID()
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      const expiresAt = sessionExpiresAt()
       await env.DB.prepare("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)").bind(sessionId, user.id, expiresAt).run()
 
       const destination = new URL(frontendUrl)
@@ -170,14 +184,27 @@ export default {
     }
 
     if (requestUrl.pathname === "/api/auth/status") {
-      return Response.json({ connected: Boolean(await getSessionUserId(request, env)) }, { headers })
+      return Response.json({ connected: Boolean(await getSession(request, env, true)) }, { headers })
+    }
+
+    if (requestUrl.pathname === "/api/auth/logout" && request.method === "POST") {
+      const sessionId = getCookie(request, "session_id")
+      if (sessionId) {
+        await env.DB.prepare("DELETE FROM sessions WHERE id = ?").bind(sessionId).run()
+      }
+
+      const secure = requestUrl.protocol === "https:" ? "; Secure" : ""
+      const sameSite = requestUrl.protocol === "https:" ? "None" : "Lax"
+      const responseHeaders = new Headers(headers)
+      responseHeaders.append("Set-Cookie", `session_id=; HttpOnly; SameSite=${sameSite}; Path=/; Max-Age=0${secure}`)
+      return Response.json({ success: true }, { headers: responseHeaders })
     }
 
     if (requestUrl.pathname === "/api/events" && request.method === "POST") {
       try {
-        const userId = await getSessionUserId(request, env)
-        if (!userId) return Response.json({ error: "Not connected" }, { status: 401, headers })
-        const tokenRow = await env.DB.prepare("SELECT encrypted_refresh_token FROM oauth_tokens WHERE user_id = ?").bind(userId).first<{ encrypted_refresh_token: string }>()
+        const session = await getSession(request, env, true)
+        if (!session) return Response.json({ error: "Not connected" }, { status: 401, headers })
+        const tokenRow = await env.DB.prepare("SELECT encrypted_refresh_token FROM oauth_tokens WHERE user_id = ?").bind(session.userId).first<{ encrypted_refresh_token: string }>()
         if (!tokenRow) return Response.json({ error: "Google account is not connected" }, { status: 401, headers })
         const refreshToken = await decryptToken(tokenRow.encrypted_refresh_token, env.TOKEN_ENCRYPTION_KEY)
         const accessToken = await refreshAccessToken(refreshToken, env)
