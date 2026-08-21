@@ -227,7 +227,7 @@ export default {
         if (!tokenRow) return Response.json({ error: "Google account is not connected" }, { status: 401, headers })
         const refreshToken = await decryptToken(tokenRow.encrypted_refresh_token, env.TOKEN_ENCRYPTION_KEY)
         const accessToken = await refreshAccessToken(refreshToken, env)
-        const body = (await request.json()) as { action?: string; title?: string; dates?: string[]; time?: string; eventId?: string }
+        const body = (await request.json()) as { action?: string; title?: string; dates?: string[]; time?: string; durationMinutes?: number; eventId?: string }
 
         if (body.action === "delete" && body.eventId) {
           const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(body.eventId)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } })
@@ -235,12 +235,15 @@ export default {
           return Response.json({ success: true }, { headers })
         }
         if (!body.title || !body.time || !body.dates?.length) return Response.json({ error: "Invalid event" }, { status: 400, headers })
+        const durationMinutes = Number.isFinite(body.durationMinutes) && (body.durationMinutes as number) > 0
+          ? Math.round(body.durationMinutes as number)
+          : 60
 
         const created = []
         for (const date of body.dates) {
           const start = new Date(`${date}T${body.time}:00+08:00`)
           if (Number.isNaN(start.getTime())) return Response.json({ error: "Invalid event date or time" }, { status: 400, headers })
-          const event = { summary: body.title, start: { dateTime: start.toISOString(), timeZone: "Asia/Singapore" }, end: { dateTime: new Date(start.getTime() + 60 * 60 * 1000).toISOString(), timeZone: "Asia/Singapore" } }
+          const event = { summary: body.title, start: { dateTime: start.toISOString(), timeZone: "Asia/Singapore" }, end: { dateTime: new Date(start.getTime() + durationMinutes * 60 * 1000).toISOString(), timeZone: "Asia/Singapore" } }
           const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(event) })
           if (!response.ok) return Response.json({ error: "Google rejected the event request" }, { status: 502, headers })
           created.push(await response.json())
@@ -257,7 +260,7 @@ export default {
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GROQ_API_KEY}` },
-        body: JSON.stringify({ model: "openai/gpt-oss-20b", messages: [{ role: "system", content: "Convert the user's request into ONLY valid JSON in this format: {\"title\":\"event title\",\"dates\":[\"YYYY-MM-DD\"],\"time\":\"HH:MM\"}. The current year is 2026." }, { role: "user", content: body.request ?? "" }] }),
+        body: JSON.stringify({ model: "openai/gpt-oss-20b", messages: [{ role: "system", content: "Convert the user's request into ONLY valid JSON in this format: {\"title\":\"event title\",\"dates\":[\"YYYY-MM-DD\"],\"time\":\"HH:MM\",\"durationMinutes\":60}. The current year is 2026. If the user gives a duration or an end time, set durationMinutes accordingly. If not specified, use 60." }, { role: "user", content: body.request ?? "" }] }),
       })
       const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
       const content = data.choices?.[0]?.message?.content

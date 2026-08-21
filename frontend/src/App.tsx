@@ -84,6 +84,7 @@ function App() {
           <p>Title: {result.title}</p>
           <p>Dates: {result.dates.join(', ')}</p>
           <p>Time: {result.time}</p>
+          <p>Duration: {Number.isFinite(result.durationMinutes) && result.durationMinutes > 0 ? result.durationMinutes : 60} minutes</p>
           <button
             onClick={async () => {
               if (!connected) {
