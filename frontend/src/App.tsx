@@ -80,9 +80,16 @@ function App() {
                   body: JSON.stringify(result),
                 })
 
-                const data = await response.json() as { error?: string }
+                let data: { error?: string } | null = null
+                try {
+                  data = await response.json() as { error?: string }
+                } catch {
+                  data = null
+                }
+
                 if (!response.ok) {
-                  setEventStatus(data.error ?? "Could not add events to Google Calendar.")
+                  const message = data?.error ?? `Calendar request failed (HTTP ${response.status}).`
+                  setEventStatus(message)
                   return
                 }
 
