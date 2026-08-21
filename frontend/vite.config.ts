@@ -10,6 +10,9 @@ export default defineConfig({
         target: 'http://localhost:8787',
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
+      '/oauth': {
+        target: 'http://localhost:8787',
+      },
     },
   },
 })

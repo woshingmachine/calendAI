@@ -8,6 +8,7 @@
 # Cloudflare Wrangler state and local variables
 **/.wrangler/
 **/.dev.vars
+service-account.json
 
 # Local environment files
 **/.env

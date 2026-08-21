@@ -11,6 +11,10 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260821.1",
     "wrangler": "^4.124.0"
+  },
+  "dependencies": {
+    "google-auth-library": "^11.0.2"
   }
 }
