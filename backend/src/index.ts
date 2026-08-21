@@ -75,6 +75,18 @@ function sessionExpiresAt() {
   return new Date(Date.now() + SESSION_TTL_MS).toISOString()
 }
 
+function durationFromRequest(request: string) {
+  const match = request.match(/\b(\d+(?:\.\d+)?)\s*(hours?|hrs?|h|minutes?|mins?|m)\b/i)
+  if (!match) return undefined
+
+  const value = Number(match[1])
+  const unit = match[2].toLowerCase()
+  const durationMinutes = /^[hm]/.test(unit) && !/^min/.test(unit) && unit !== "m"
+    ? value * 60
+    : value
+  return Number.isFinite(durationMinutes) && durationMinutes > 0 ? Math.round(durationMinutes) : undefined
+}
+
 async function getSession(request: Request, env: Env, extend = false) {
   const sessionId = getCookie(request, "session_id")
   if (!sessionId) return null
@@ -257,15 +269,19 @@ export default {
 
     if (requestUrl.pathname === "/api/parse" && request.method === "POST") {
       const body = (await request.json()) as { request?: string }
+      const userRequest = body.request ?? ""
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GROQ_API_KEY}` },
-        body: JSON.stringify({ model: "openai/gpt-oss-20b", messages: [{ role: "system", content: "Convert the user's request into ONLY valid JSON in this format: {\"title\":\"event title\",\"dates\":[\"YYYY-MM-DD\"],\"time\":\"HH:MM\",\"durationMinutes\":60}. The current year is 2026. If the user gives a duration or an end time, set durationMinutes accordingly. If not specified, use 60." }, { role: "user", content: body.request ?? "" }] }),
+        body: JSON.stringify({ model: "openai/gpt-oss-20b", messages: [{ role: "system", content: "Convert the user's request into ONLY valid JSON in this exact format: {\"title\":\"event title\",\"dates\":[\"YYYY-MM-DD\"],\"time\":\"HH:MM\",\"durationMinutes\":60}. The current year is 2026. Convert explicit durations to minutes: for example, '2 hour class' means durationMinutes 120, and '90 minutes' means durationMinutes 90. If the user gives an end time, calculate the duration from the start time. Only use 60 when no duration or end time is specified." }, { role: "user", content: userRequest }] }),
       })
       const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
       const content = data.choices?.[0]?.message?.content
       if (!content) return Response.json({ error: "AI parsing failed" }, { status: 502, headers })
-      return Response.json(JSON.parse(content), { headers })
+      const parsed = JSON.parse(content.replace(/^```json\s*|\s*```$/gi, "")) as Record<string, unknown>
+      const explicitDuration = durationFromRequest(userRequest)
+      if (explicitDuration !== undefined) parsed.durationMinutes = explicitDuration
+      return Response.json(parsed, { headers })
     }
 
     return Response.json({ message: "CalendAI backend is working!" }, { headers })
