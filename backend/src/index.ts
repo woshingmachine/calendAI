@@ -140,6 +140,23 @@ function buildGoogleEvent(title: string, date: string, time: string, durationMin
   }
 }
 
+function normalizeTitle(value: string) {
+  return value.toLowerCase().trim().replace(/s$/, "")
+}
+
+function titleMatches(query: string, summary: string) {
+  if (!query) return true
+  const q = normalizeTitle(query)
+  const s = normalizeTitle(summary)
+  return s.includes(q) || q.includes(s)
+}
+
+function eventDateLabel(start: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(start)) return start
+  const shifted = new Date(new Date(start).getTime() + 8 * 60 * 60 * 1000)
+  return shifted.toISOString().slice(0, 10)
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const requestUrl = new URL(request.url)
@@ -278,6 +295,7 @@ export default {
           action?: string
           title?: string
           dates?: string[]
+          dateRange?: { start: string; end: string } | null
           time?: string
           durationMinutes?: number
           calendarId?: string
@@ -287,32 +305,63 @@ export default {
         const calendarId = body.calendarId?.trim() || "primary"
 
         if (body.action === "match") {
-          if (!body.dates?.length) return Response.json({ error: "No dates to search" }, { status: 400, headers })
+          if (!body.dates?.length && !body.dateRange) return Response.json({ error: "No dates to search" }, { status: 400, headers })
           const title = body.title?.trim() ?? ""
-          const matches = []
-          for (const date of body.dates) {
-            const timeMin = new Date(`${date}T00:00:00+08:00`)
-            const timeMax = new Date(`${date}T23:59:59+08:00`)
-            if (Number.isNaN(timeMin.getTime()) || Number.isNaN(timeMax.getTime())) {
-              matches.push({ date, events: [], error: "Invalid date" })
-              continue
-            }
-            const params = new URLSearchParams({ timeMin: timeMin.toISOString(), timeMax: timeMax.toISOString(), singleEvents: "true", orderBy: "startTime" })
-            if (title) params.set("q", title)
+
+          const fetchWindowEvents = async (timeMinIso: string, timeMaxIso: string) => {
+            const params = new URLSearchParams({ timeMin: timeMinIso, timeMax: timeMaxIso, singleEvents: "true", orderBy: "startTime", maxResults: "250" })
             const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`, { headers: { Authorization: `Bearer ${accessToken}` } })
-            if (!response.ok) {
-              matches.push({ date, events: [], error: "Google rejected the search request" })
-              continue
-            }
+            if (!response.ok) return null
             const data = (await response.json()) as { items?: Array<{ id: string; summary?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string } }> }
-            const events = (data.items ?? []).map((item) => ({
+            return (data.items ?? []).map((item) => ({
               id: item.id,
               summary: item.summary ?? "(untitled)",
               start: item.start?.dateTime ?? item.start?.date ?? "",
               end: item.end?.dateTime ?? item.end?.date ?? "",
             }))
-            matches.push({ date, events })
           }
+
+          if (body.dates?.length) {
+            const matches = []
+            for (const date of body.dates) {
+              const timeMin = new Date(`${date}T00:00:00+08:00`)
+              const timeMax = new Date(`${date}T23:59:59+08:00`)
+              if (Number.isNaN(timeMin.getTime()) || Number.isNaN(timeMax.getTime())) {
+                matches.push({ date, events: [], error: "Invalid date" })
+                continue
+              }
+              const events = await fetchWindowEvents(timeMin.toISOString(), timeMax.toISOString())
+              if (events === null) {
+                matches.push({ date, events: [], error: "Google rejected the search request" })
+                continue
+              }
+              matches.push({ date, events: events.filter((event) => titleMatches(title, event.summary)) })
+            }
+            return Response.json({ matches }, { headers })
+          }
+
+          const range = body.dateRange!
+          const timeMin = new Date(`${range.start}T00:00:00+08:00`)
+          const timeMax = new Date(`${range.end}T23:59:59+08:00`)
+          const rangeLabel = `${range.start} to ${range.end}`
+          if (Number.isNaN(timeMin.getTime()) || Number.isNaN(timeMax.getTime())) {
+            return Response.json({ matches: [{ date: rangeLabel, events: [], error: "Invalid date range" }] }, { headers })
+          }
+          const events = await fetchWindowEvents(timeMin.toISOString(), timeMax.toISOString())
+          if (events === null) {
+            return Response.json({ matches: [{ date: rangeLabel, events: [], error: "Google rejected the search request" }] }, { headers })
+          }
+          const filtered = events.filter((event) => titleMatches(title, event.summary))
+          if (filtered.length === 0) {
+            return Response.json({ matches: [{ date: rangeLabel, events: [], error: "No matching events found in this range" }] }, { headers })
+          }
+          const grouped = new Map<string, typeof filtered>()
+          for (const event of filtered) {
+            const label = eventDateLabel(event.start)
+            if (!grouped.has(label)) grouped.set(label, [])
+            grouped.get(label)!.push(event)
+          }
+          const matches = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, dateEvents]) => ({ date, events: dateEvents }))
           return Response.json({ matches }, { headers })
         }
 
@@ -366,11 +415,13 @@ export default {
       const body = (await request.json()) as { request?: string }
       const userRequest = body.request ?? ""
       const today = new Date().toISOString().slice(0, 10)
-      const systemPrompt = `Convert the user's request into ONLY valid JSON in this exact format: {"action":"create","title":"event title","dates":["YYYY-MM-DD"],"time":"HH:MM","durationMinutes":60,"updates":null}. Today's date is ${today}, and the current year is 2026.
+      const systemPrompt = `Convert the user's request into ONLY valid JSON in this exact format: {"action":"create","title":"event title","dates":["YYYY-MM-DD"],"dateRange":null,"time":"HH:MM","durationMinutes":60,"updates":null}. Today's date is ${today}, and the current year is 2026.
 "action" is one of "create", "update", or "delete", based on what the user wants to do.
-For "create": fill title/dates/time/durationMinutes as the new event to add, and set "updates" to null.
-For "delete": title/dates/time/durationMinutes describe the existing event(s) to find and remove (time and durationMinutes can be your best guess and are not critical). Set "updates" to null.
-For "update": title/dates/time/durationMinutes describe the existing event(s) to find. "updates" must be an object with only the fields the user wants changed, using null for fields that stay the same: {"title":null,"date":null,"time":null,"durationMinutes":null}.
+For "create": fill title/dates/time/durationMinutes as the new event to add, set "dateRange" to null, and set "updates" to null.
+For "delete" or "update": title/time/durationMinutes describe the existing event(s) to find (time and durationMinutes are best-effort hints, not critical). For which day(s) to search:
+  - If the user gives specific date(s) (e.g. "on 2 August", "next Monday"), set "dates" to that list of "YYYY-MM-DD" strings and leave "dateRange" null.
+  - If the user refers to a period instead of specific dates (e.g. "all of August", "this week", "next 2 weeks", "in September"), set "dates" to an empty array [] and set "dateRange" to {"start":"YYYY-MM-DD","end":"YYYY-MM-DD"} spanning that whole period inclusive, resolved relative to today's date.
+For "delete", set "updates" to null. For "update", "updates" must be an object with only the fields the user wants changed, using null for fields that stay the same: {"title":null,"date":null,"time":null,"durationMinutes":null}.
 Convert explicit durations to minutes: for example, '2 hour class' means durationMinutes 120, and '90 minutes' means durationMinutes 90. If the user gives an end time, calculate the duration from the start time. Only use 60 when no duration or end time is specified and the action is "create".`
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",

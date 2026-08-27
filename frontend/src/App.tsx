@@ -20,6 +20,7 @@ interface ParsedResult {
   action?: 'create' | 'update' | 'delete'
   title: string
   dates: string[]
+  dateRange?: { start: string; end: string } | null
   time: string
   durationMinutes?: number
   updates?: ParsedUpdates | null
@@ -106,7 +107,7 @@ function App() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'match', title: parsed.title, dates: parsed.dates, calendarId: selectedCalendarId }),
+        body: JSON.stringify({ action: 'match', title: parsed.title, dates: parsed.dates, dateRange: parsed.dateRange ?? null, calendarId: selectedCalendarId }),
       })
       const data = await response.json() as { matches?: DateMatch[]; error?: string }
       if (!response.ok || !data.matches) {
@@ -313,7 +314,12 @@ function App() {
       {result && (action === 'update' || action === 'delete') && (
         <div>
           <h2>{action === 'delete' ? 'Events to delete' : 'Events to update'}</h2>
-          <p>Looking for: {result.title || '(any title)'}</p>
+          <p>
+            Looking for: {result.title || '(any title)'}
+            {result.dateRange
+              ? ` between ${result.dateRange.start} and ${result.dateRange.end}`
+              : result.dates?.length ? ` on ${result.dates.join(', ')}` : ''}
+          </p>
           {action === 'update' && result.updates && (
             <p>
               Changes:{' '}
