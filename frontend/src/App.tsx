@@ -3,6 +3,12 @@ import { useEffect, useState } from 'react'
 const BACKEND_URL =
   import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8787'
 
+interface Calendar {
+  id: string
+  summary: string
+  primary: boolean
+}
+
 function App() {
   const [request, setRequest] = useState('')
   const [result, setResult] = useState<any>(null)
@@ -10,14 +16,31 @@ function App() {
   const [eventStatus, setEventStatus] = useState('')
   const [addingEvents, setAddingEvents] = useState(false)
   const [authStatus, setAuthStatus] = useState('')
+  const [calendars, setCalendars] = useState<Calendar[]>([])
+  const [selectedCalendarId, setSelectedCalendarId] = useState('primary')
 
   async function refreshAuthStatus() {
     try {
       const response = await fetch(`${BACKEND_URL}/api/auth/status`, { credentials: 'include' })
       const data = await response.json() as { connected?: boolean }
       setConnected(Boolean(data.connected))
+      if (data.connected) await refreshCalendars()
     } catch {
       setConnected(false)
+    }
+  }
+
+  async function refreshCalendars() {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/calendars`, { credentials: 'include' })
+      if (!response.ok) return
+      const data = await response.json() as { calendars?: Calendar[] }
+      const list = data.calendars ?? []
+      setCalendars(list)
+      const primary = list.find((calendar) => calendar.primary)
+      setSelectedCalendarId(primary?.id ?? list[0]?.id ?? 'primary')
+    } catch {
+      setCalendars([])
     }
   }
 
@@ -63,6 +86,24 @@ function App() {
       {authStatus && <p role="status">{authStatus}</p>}
       <p>Connection status: {connected ? 'Connected' : 'Not connected'}</p>
 
+      {connected && calendars.length > 0 && (
+        <p>
+          <label htmlFor="calendar-select">Add events to: </label>
+          <select
+            id="calendar-select"
+            value={selectedCalendarId}
+            onChange={(e) => setSelectedCalendarId(e.target.value)}
+          >
+            {calendars.map((calendar) => (
+              <option key={calendar.id} value={calendar.id}>
+                {calendar.summary}
+                {calendar.primary ? ' (primary)' : ''}
+              </option>
+            ))}
+          </select>
+        </p>
+      )}
+
       <p>What would you like to schedule?</p>
 
       <textarea
@@ -99,7 +140,7 @@ function App() {
                   method: "POST",
                   credentials: "include",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(result),
+                  body: JSON.stringify({ ...result, calendarId: selectedCalendarId }),
                 })
 
                 let data: { error?: string } | null = null

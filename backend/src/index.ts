@@ -231,6 +231,26 @@ export default {
       })
     }
 
+    if (requestUrl.pathname === "/api/calendars" && request.method === "GET") {
+      try {
+        const session = await getSession(request, env, true)
+        if (!session) return Response.json({ error: "Not connected" }, { status: 401, headers })
+        const tokenRow = await env.DB.prepare("SELECT encrypted_refresh_token FROM oauth_tokens WHERE user_id = ?").bind(session.userId).first<{ encrypted_refresh_token: string }>()
+        if (!tokenRow) return Response.json({ error: "Google account is not connected" }, { status: 401, headers })
+        const refreshToken = await decryptToken(tokenRow.encrypted_refresh_token, env.TOKEN_ENCRYPTION_KEY)
+        const accessToken = await refreshAccessToken(refreshToken, env)
+
+        const response = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=writer", { headers: { Authorization: `Bearer ${accessToken}` } })
+        if (!response.ok) return Response.json({ error: "Google rejected the calendar list request" }, { status: 502, headers })
+        const data = (await response.json()) as { items?: Array<{ id: string; summary: string; primary?: boolean }> }
+        const calendars = (data.items ?? []).map((item) => ({ id: item.id, summary: item.summary, primary: Boolean(item.primary) }))
+        return Response.json({ calendars }, { headers })
+      } catch (error) {
+        console.error("Calendar list request failed", error)
+        return Response.json({ error: "Calendar list request failed" }, { status: 502, headers })
+      }
+    }
+
     if (requestUrl.pathname === "/api/events" && request.method === "POST") {
       try {
         const session = await getSession(request, env, true)
@@ -239,10 +259,11 @@ export default {
         if (!tokenRow) return Response.json({ error: "Google account is not connected" }, { status: 401, headers })
         const refreshToken = await decryptToken(tokenRow.encrypted_refresh_token, env.TOKEN_ENCRYPTION_KEY)
         const accessToken = await refreshAccessToken(refreshToken, env)
-        const body = (await request.json()) as { action?: string; title?: string; dates?: string[]; time?: string; durationMinutes?: number; eventId?: string }
+        const body = (await request.json()) as { action?: string; title?: string; dates?: string[]; time?: string; durationMinutes?: number; eventId?: string; calendarId?: string }
+        const calendarId = body.calendarId?.trim() || "primary"
 
         if (body.action === "delete" && body.eventId) {
-          const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(body.eventId)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } })
+          const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(body.eventId)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } })
           if (!response.ok) return Response.json({ error: "Google rejected the delete request" }, { status: 502, headers })
           return Response.json({ success: true }, { headers })
         }
@@ -256,7 +277,7 @@ export default {
           const start = new Date(`${date}T${body.time}:00+08:00`)
           if (Number.isNaN(start.getTime())) return Response.json({ error: "Invalid event date or time" }, { status: 400, headers })
           const event = { summary: body.title, start: { dateTime: start.toISOString(), timeZone: "Asia/Singapore" }, end: { dateTime: new Date(start.getTime() + durationMinutes * 60 * 1000).toISOString(), timeZone: "Asia/Singapore" } }
-          const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(event) })
+          const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(event) })
           if (!response.ok) return Response.json({ error: "Google rejected the event request" }, { status: 502, headers })
           created.push(await response.json())
         }
