@@ -121,6 +121,25 @@ async function refreshAccessToken(refreshToken: string, env: Env) {
   return tokens.access_token
 }
 
+async function getAccessTokenForSession(session: { userId: string }, env: Env) {
+  const tokenRow = await env.DB.prepare("SELECT encrypted_refresh_token FROM oauth_tokens WHERE user_id = ?")
+    .bind(session.userId)
+    .first<{ encrypted_refresh_token: string }>()
+  if (!tokenRow) return null
+  const refreshToken = await decryptToken(tokenRow.encrypted_refresh_token, env.TOKEN_ENCRYPTION_KEY)
+  return refreshAccessToken(refreshToken, env)
+}
+
+function buildGoogleEvent(title: string, date: string, time: string, durationMinutes: number) {
+  const start = new Date(`${date}T${time}:00+08:00`)
+  if (Number.isNaN(start.getTime())) return null
+  return {
+    summary: title,
+    start: { dateTime: start.toISOString(), timeZone: "Asia/Singapore" },
+    end: { dateTime: new Date(start.getTime() + durationMinutes * 60 * 1000).toISOString(), timeZone: "Asia/Singapore" },
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const requestUrl = new URL(request.url)
@@ -235,10 +254,8 @@ export default {
       try {
         const session = await getSession(request, env, true)
         if (!session) return Response.json({ error: "Not connected" }, { status: 401, headers })
-        const tokenRow = await env.DB.prepare("SELECT encrypted_refresh_token FROM oauth_tokens WHERE user_id = ?").bind(session.userId).first<{ encrypted_refresh_token: string }>()
-        if (!tokenRow) return Response.json({ error: "Google account is not connected" }, { status: 401, headers })
-        const refreshToken = await decryptToken(tokenRow.encrypted_refresh_token, env.TOKEN_ENCRYPTION_KEY)
-        const accessToken = await refreshAccessToken(refreshToken, env)
+        const accessToken = await getAccessTokenForSession(session, env)
+        if (!accessToken) return Response.json({ error: "Google account is not connected" }, { status: 401, headers })
 
         const response = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=writer", { headers: { Authorization: `Bearer ${accessToken}` } })
         if (!response.ok) return Response.json({ error: "Google rejected the calendar list request" }, { status: 502, headers })
@@ -255,18 +272,76 @@ export default {
       try {
         const session = await getSession(request, env, true)
         if (!session) return Response.json({ error: "Not connected" }, { status: 401, headers })
-        const tokenRow = await env.DB.prepare("SELECT encrypted_refresh_token FROM oauth_tokens WHERE user_id = ?").bind(session.userId).first<{ encrypted_refresh_token: string }>()
-        if (!tokenRow) return Response.json({ error: "Google account is not connected" }, { status: 401, headers })
-        const refreshToken = await decryptToken(tokenRow.encrypted_refresh_token, env.TOKEN_ENCRYPTION_KEY)
-        const accessToken = await refreshAccessToken(refreshToken, env)
-        const body = (await request.json()) as { action?: string; title?: string; dates?: string[]; time?: string; durationMinutes?: number; eventId?: string; calendarId?: string }
+        const accessToken = await getAccessTokenForSession(session, env)
+        if (!accessToken) return Response.json({ error: "Google account is not connected" }, { status: 401, headers })
+        const body = (await request.json()) as {
+          action?: string
+          title?: string
+          dates?: string[]
+          time?: string
+          durationMinutes?: number
+          calendarId?: string
+          eventIds?: string[]
+          updates?: Array<{ eventId: string; title: string; date: string; time: string; durationMinutes: number }>
+        }
         const calendarId = body.calendarId?.trim() || "primary"
 
-        if (body.action === "delete" && body.eventId) {
-          const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(body.eventId)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } })
-          if (!response.ok) return Response.json({ error: "Google rejected the delete request" }, { status: 502, headers })
-          return Response.json({ success: true }, { headers })
+        if (body.action === "match") {
+          if (!body.dates?.length) return Response.json({ error: "No dates to search" }, { status: 400, headers })
+          const title = body.title?.trim() ?? ""
+          const matches = []
+          for (const date of body.dates) {
+            const timeMin = new Date(`${date}T00:00:00+08:00`)
+            const timeMax = new Date(`${date}T23:59:59+08:00`)
+            if (Number.isNaN(timeMin.getTime()) || Number.isNaN(timeMax.getTime())) {
+              matches.push({ date, events: [], error: "Invalid date" })
+              continue
+            }
+            const params = new URLSearchParams({ timeMin: timeMin.toISOString(), timeMax: timeMax.toISOString(), singleEvents: "true", orderBy: "startTime" })
+            if (title) params.set("q", title)
+            const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`, { headers: { Authorization: `Bearer ${accessToken}` } })
+            if (!response.ok) {
+              matches.push({ date, events: [], error: "Google rejected the search request" })
+              continue
+            }
+            const data = (await response.json()) as { items?: Array<{ id: string; summary?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string } }> }
+            const events = (data.items ?? []).map((item) => ({
+              id: item.id,
+              summary: item.summary ?? "(untitled)",
+              start: item.start?.dateTime ?? item.start?.date ?? "",
+              end: item.end?.dateTime ?? item.end?.date ?? "",
+            }))
+            matches.push({ date, events })
+          }
+          return Response.json({ matches }, { headers })
         }
+
+        if (body.action === "delete") {
+          if (!body.eventIds?.length) return Response.json({ error: "No events to delete" }, { status: 400, headers })
+          const results = []
+          for (const eventId of body.eventIds) {
+            const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } })
+            const ok = response.ok || response.status === 404 || response.status === 410
+            results.push({ id: eventId, ok, error: ok ? undefined : "Google rejected the delete request" })
+          }
+          return Response.json({ success: true, results }, { headers })
+        }
+
+        if (body.action === "update") {
+          if (!body.updates?.length) return Response.json({ error: "No events to update" }, { status: 400, headers })
+          const results = []
+          for (const update of body.updates) {
+            const event = buildGoogleEvent(update.title, update.date, update.time, update.durationMinutes)
+            if (!event) {
+              results.push({ id: update.eventId, ok: false, error: "Invalid event date or time" })
+              continue
+            }
+            const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(update.eventId)}`, { method: "PATCH", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(event) })
+            results.push({ id: update.eventId, ok: response.ok, error: response.ok ? undefined : "Google rejected the update request" })
+          }
+          return Response.json({ success: true, results }, { headers })
+        }
+
         if (!body.title || !body.time || !body.dates?.length) return Response.json({ error: "Invalid event" }, { status: 400, headers })
         const durationMinutes = Number.isFinite(body.durationMinutes) && (body.durationMinutes as number) > 0
           ? Math.round(body.durationMinutes as number)
@@ -274,9 +349,8 @@ export default {
 
         const created = []
         for (const date of body.dates) {
-          const start = new Date(`${date}T${body.time}:00+08:00`)
-          if (Number.isNaN(start.getTime())) return Response.json({ error: "Invalid event date or time" }, { status: 400, headers })
-          const event = { summary: body.title, start: { dateTime: start.toISOString(), timeZone: "Asia/Singapore" }, end: { dateTime: new Date(start.getTime() + durationMinutes * 60 * 1000).toISOString(), timeZone: "Asia/Singapore" } }
+          const event = buildGoogleEvent(body.title, date, body.time, durationMinutes)
+          if (!event) return Response.json({ error: "Invalid event date or time" }, { status: 400, headers })
           const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(event) })
           if (!response.ok) return Response.json({ error: "Google rejected the event request" }, { status: 502, headers })
           created.push(await response.json())
@@ -291,17 +365,26 @@ export default {
     if (requestUrl.pathname === "/api/parse" && request.method === "POST") {
       const body = (await request.json()) as { request?: string }
       const userRequest = body.request ?? ""
+      const today = new Date().toISOString().slice(0, 10)
+      const systemPrompt = `Convert the user's request into ONLY valid JSON in this exact format: {"action":"create","title":"event title","dates":["YYYY-MM-DD"],"time":"HH:MM","durationMinutes":60,"updates":null}. Today's date is ${today}, and the current year is 2026.
+"action" is one of "create", "update", or "delete", based on what the user wants to do.
+For "create": fill title/dates/time/durationMinutes as the new event to add, and set "updates" to null.
+For "delete": title/dates/time/durationMinutes describe the existing event(s) to find and remove (time and durationMinutes can be your best guess and are not critical). Set "updates" to null.
+For "update": title/dates/time/durationMinutes describe the existing event(s) to find. "updates" must be an object with only the fields the user wants changed, using null for fields that stay the same: {"title":null,"date":null,"time":null,"durationMinutes":null}.
+Convert explicit durations to minutes: for example, '2 hour class' means durationMinutes 120, and '90 minutes' means durationMinutes 90. If the user gives an end time, calculate the duration from the start time. Only use 60 when no duration or end time is specified and the action is "create".`
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GROQ_API_KEY}` },
-        body: JSON.stringify({ model: "openai/gpt-oss-20b", messages: [{ role: "system", content: "Convert the user's request into ONLY valid JSON in this exact format: {\"title\":\"event title\",\"dates\":[\"YYYY-MM-DD\"],\"time\":\"HH:MM\",\"durationMinutes\":60}. The current year is 2026. Convert explicit durations to minutes: for example, '2 hour class' means durationMinutes 120, and '90 minutes' means durationMinutes 90. If the user gives an end time, calculate the duration from the start time. Only use 60 when no duration or end time is specified." }, { role: "user", content: userRequest }] }),
+        body: JSON.stringify({ model: "openai/gpt-oss-20b", messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userRequest }] }),
       })
       const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
       const content = data.choices?.[0]?.message?.content
       if (!content) return Response.json({ error: "AI parsing failed" }, { status: 502, headers })
       const parsed = JSON.parse(content.replace(/^```json\s*|\s*```$/gi, "")) as Record<string, unknown>
-      const explicitDuration = durationFromRequest(userRequest)
-      if (explicitDuration !== undefined) parsed.durationMinutes = explicitDuration
+      if (parsed.action === "create" || !parsed.action) {
+        const explicitDuration = durationFromRequest(userRequest)
+        if (explicitDuration !== undefined) parsed.durationMinutes = explicitDuration
+      }
       return Response.json(parsed, { headers })
     }
 
