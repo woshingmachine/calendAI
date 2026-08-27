@@ -34,10 +34,10 @@ If successful, events are created in your Google Calendar.
 - Natural language processing
 - Adding events to calendars
 - Persistent login
+- Edit, delete capabilities
 
 ## Planned to add
 
-- Edit, delete capabilities
 - UI updates
 - PWA support
 
