@@ -16,9 +16,15 @@ interface ParsedUpdates {
   durationMinutes: number | null
 }
 
+interface Slot {
+  date: string
+  time: string
+}
+
 interface ParsedResult {
   action?: 'create' | 'update' | 'delete'
   title: string
+  slots?: Slot[]
   dates: string[]
   dateRange?: { start: string; end: string } | null
   time: string
@@ -301,8 +307,11 @@ function App() {
         <div>
           <h2>Event preview</h2>
           <p>Title: {result.title}</p>
-          <p>Dates: {result.dates.join(', ')}</p>
-          <p>Time: {result.time}</p>
+          <ul>
+            {(result.slots?.length ? result.slots : result.dates.map((date) => ({ date, time: result.time }))).map((slot) => (
+              <li key={`${slot.date}-${slot.time}`}>{slot.date} at {slot.time}</li>
+            ))}
+          </ul>
           <p>Duration: {Number.isFinite(result.durationMinutes) && (result.durationMinutes as number) > 0 ? result.durationMinutes : 60} minutes</p>
           <button onClick={handleConfirm} disabled={submitting}>
             Confirm & Add to Calendar

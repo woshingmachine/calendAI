@@ -297,6 +297,7 @@ export default {
           dates?: string[]
           dateRange?: { start: string; end: string } | null
           time?: string
+          slots?: Array<{ date: string; time: string }>
           durationMinutes?: number
           calendarId?: string
           eventIds?: string[]
@@ -391,14 +392,15 @@ export default {
           return Response.json({ success: true, results }, { headers })
         }
 
-        if (!body.title || !body.time || !body.dates?.length) return Response.json({ error: "Invalid event" }, { status: 400, headers })
+        const slots = body.slots?.length ? body.slots : (body.time && body.dates?.length ? body.dates.map((date) => ({ date, time: body.time as string })) : [])
+        if (!body.title || !slots.length) return Response.json({ error: "Invalid event" }, { status: 400, headers })
         const durationMinutes = Number.isFinite(body.durationMinutes) && (body.durationMinutes as number) > 0
           ? Math.round(body.durationMinutes as number)
           : 60
 
         const created = []
-        for (const date of body.dates) {
-          const event = buildGoogleEvent(body.title, date, body.time, durationMinutes)
+        for (const slot of slots) {
+          const event = buildGoogleEvent(body.title, slot.date, slot.time, durationMinutes)
           if (!event) return Response.json({ error: "Invalid event date or time" }, { status: 400, headers })
           const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(event) })
           if (!response.ok) return Response.json({ error: "Google rejected the event request" }, { status: 502, headers })
@@ -415,10 +417,10 @@ export default {
       const body = (await request.json()) as { request?: string }
       const userRequest = body.request ?? ""
       const today = new Date().toISOString().slice(0, 10)
-      const systemPrompt = `Convert the user's request into ONLY valid JSON in this exact format: {"action":"create","title":"event title","dates":["YYYY-MM-DD"],"dateRange":null,"time":"HH:MM","durationMinutes":60,"updates":null}. Today's date is ${today}, and the current year is 2026.
+      const systemPrompt = `Convert the user's request into ONLY valid JSON in this exact format: {"action":"create","title":"event title","slots":[{"date":"YYYY-MM-DD","time":"HH:MM"}],"dates":[],"dateRange":null,"time":null,"durationMinutes":60,"updates":null}. Today's date is ${today}, and the current year is 2026.
 "action" is one of "create", "update", or "delete", based on what the user wants to do.
-For "create": fill title/dates/time/durationMinutes as the new event to add, set "dateRange" to null, and set "updates" to null.
-For "delete" or "update": title/time/durationMinutes describe the existing event(s) to find (time and durationMinutes are best-effort hints, not critical). For which day(s) to search:
+For "create": "slots" must contain one entry per event to add, each pairing one date with one time — this is how you express both "multiple dates at the same time" and "multiple times on the same date". For example "X on 1, 2, 7 and 8 August at 10am" produces four slots (one per date, all at 10:00), and "X today at 3pm, 6pm and 7pm" produces three slots (all on today's date, at 15:00/18:00/19:00). Never collapse multiple times into one slot or drop any requested time. Set "dates" to [], "dateRange" to null, and "time" to null for create; fill "title" and "durationMinutes" normally; set "updates" to null.
+For "delete" or "update": set "slots" to []. title/time/durationMinutes describe the existing event(s) to find (time and durationMinutes are best-effort hints, not critical). For which day(s) to search:
   - If the user gives specific date(s) (e.g. "on 2 August", "next Monday"), set "dates" to that list of "YYYY-MM-DD" strings and leave "dateRange" null.
   - If the user refers to a period instead of specific dates (e.g. "all of August", "this week", "next 2 weeks", "in September"), set "dates" to an empty array [] and set "dateRange" to {"start":"YYYY-MM-DD","end":"YYYY-MM-DD"} spanning that whole period inclusive, resolved relative to today's date.
 For "delete", set "updates" to null. For "update", "updates" must be an object with only the fields the user wants changed, using null for fields that stay the same: {"title":null,"date":null,"time":null,"durationMinutes":null}.
