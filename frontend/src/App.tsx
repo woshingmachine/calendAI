@@ -146,10 +146,15 @@ function App() {
       body: JSON.stringify({ request }),
     })
 
-    const parsed = await response.json() as ParsedResult
-    setResult(parsed)
-    if (parsed.action === 'update' || parsed.action === 'delete') {
-      await loadMatches(parsed)
+    const data = await response.json() as ParsedResult & { error?: string }
+    if (!response.ok || data.error) {
+      setEventStatus(data.error ?? `Could not understand that request (HTTP ${response.status}).`)
+      return
+    }
+
+    setResult(data)
+    if (data.action === 'update' || data.action === 'delete') {
+      await loadMatches(data)
     }
   }
 
@@ -302,6 +307,8 @@ function App() {
       <button onClick={handleSchedule}>
         Submit
       </button>
+
+      {!result && eventStatus && <p role="status">{eventStatus}</p>}
 
       {result && (action === 'create') && (
         <div>

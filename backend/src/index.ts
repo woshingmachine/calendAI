@@ -437,6 +437,22 @@ Convert explicit durations to minutes: for example, '2 hour class' means duratio
       if (parsed.action === "create" || !parsed.action) {
         const explicitDuration = durationFromRequest(userRequest)
         if (explicitDuration !== undefined) parsed.durationMinutes = explicitDuration
+
+        const isValidSlot = (slot: unknown): slot is { date: string; time: string } => {
+          if (!slot || typeof slot !== "object") return false
+          const { date, time } = slot as Record<string, unknown>
+          return typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) && typeof time === "string" && /^\d{2}:\d{2}$/.test(time)
+        }
+        let slots = Array.isArray(parsed.slots) ? parsed.slots.filter(isValidSlot) : []
+        if (!slots.length) {
+          const fallbackDates = Array.isArray(parsed.dates) ? parsed.dates.filter((d): d is string => typeof d === "string") : []
+          const fallbackTime = typeof parsed.time === "string" ? parsed.time : null
+          if (fallbackDates.length && fallbackTime) slots = fallbackDates.map((date) => ({ date, time: fallbackTime }))
+        }
+        if (!slots.length) {
+          return Response.json({ error: "Could not understand the date/time for this event. Try rephrasing, e.g. \"Class on 27 August at 3pm and 5pm\"." }, { status: 422, headers })
+        }
+        parsed.slots = slots
       }
       return Response.json(parsed, { headers })
     }
