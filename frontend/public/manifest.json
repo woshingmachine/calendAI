@@ -9,14 +9,16 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22><rect fill=%22%232563eb%22 x=%222%22 y=%222%22 width=%2244%22 height=%2244%22 rx=%228%22/><path fill=%22%23ffffff%22 d=%22M12 12h8v20h-8z M28 12h8v8h-8z M28 24h8v8h-8z M12 36h8v6h-8z%22/></svg>",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22><rect fill=%22%232563eb%22 x=%222%22 y=%222%22 width=%2244%22 height=%2244%22 rx=%228%22/><path fill=%22%23ffffff%22 d=%22M12 12h8v20h-8z M28 12h8v8h-8z M28 24h8v8h-8z M12 36h8v6h-8z%22/></svg>",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }

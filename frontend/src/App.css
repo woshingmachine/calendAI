@@ -46,6 +46,8 @@ body {
 
 main {
   width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
   padding: 1rem;
   flex: 1;
 }
@@ -320,17 +322,6 @@ textarea:focus {
 
 /* Desktop styles */
 @media (min-width: 768px) {
-  main {
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 1.5rem;
-  }
-
-  h1 {
-    font-size: 2.5rem;
-    margin: 2.5rem 0 2rem;
-  }
-
   .btn-group {
     flex-direction: row;
   }
