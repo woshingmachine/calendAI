@@ -22,7 +22,6 @@
   --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
-/* Mobile-first base styles */
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
@@ -52,7 +51,6 @@ main {
   flex: 1;
 }
 
-/* Header */
 h1 {
   font-size: 2rem;
   font-weight: 800;
@@ -69,15 +67,15 @@ h2 {
   margin: 1.5rem 0 1rem;
 }
 
-/* Buttons */
 button {
   font: inherit;
   cursor: pointer;
   border: none;
   border-radius: 12px;
-  padding: 0.875rem 1.5rem;
+  padding: 1rem 1.5rem;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 1.125rem;
+  min-height: 52px;
   transition: all 0.2s ease;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
@@ -126,7 +124,6 @@ button:disabled {
   margin: 0;
 }
 
-/* Connection status */
 .connection-status {
   text-align: center;
   padding: 0.875rem;
@@ -149,7 +146,6 @@ button:disabled {
   color: #991b1b;
 }
 
-/* Labels and inputs */
 label {
   display: block;
   margin-bottom: 0.5rem;
@@ -193,7 +189,6 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* Results and previews */
 .result-section {
   margin-top: 2rem;
   padding-top: 2rem;
@@ -239,7 +234,6 @@ textarea:focus {
   margin-bottom: 0;
 }
 
-/* Matched events */
 .matched-events {
   margin-top: 1.5rem;
 }
@@ -288,7 +282,6 @@ textarea:focus {
   color: var(--text-muted);
 }
 
-/* Messages */
 .message {
   padding: 1rem;
   border-radius: 12px;
@@ -308,7 +301,6 @@ textarea:focus {
   color: #166534;
 }
 
-/* Action buttons */
 .action-buttons {
   display: flex;
   flex-direction: column;
@@ -320,7 +312,6 @@ textarea:focus {
   width: 100%;
 }
 
-/* Desktop styles */
 @media (min-width: 768px) {
   .btn-group {
     flex-direction: row;
@@ -340,14 +331,6 @@ textarea:focus {
   }
 }
 
-/* Touch target optimization for mobile */
-button,
-select,
-textarea {
-  min-height: 48px;
-}
-
-/* Animation */
 @keyframes fadeIn {
   from {
     opacity: 0;
