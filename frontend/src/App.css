@@ -40,9 +40,15 @@ body {
 main {
   width: 100%;
   max-width: 600px;
+  min-width: 0;
   margin: 0 auto;
   padding: 1rem;
   flex: 1;
+}
+
+main > * {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 h1 {
