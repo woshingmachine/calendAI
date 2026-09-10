@@ -36,13 +36,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-#root {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-}
-
+/* Main content container - centered */
 main {
   width: 100%;
   max-width: 600px;
@@ -79,6 +73,7 @@ button {
   transition: all 0.2s ease;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  width: 100%;
 }
 
 button:active:not(:disabled) {
@@ -88,19 +83,6 @@ button:active:not(:disabled) {
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--primary);
-  color: white;
-  width: 100%;
-  margin-bottom: 0.75rem;
-  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--primary-dark);
-  box-shadow: 0 4px 8px rgba(37, 99, 235, 0.3);
 }
 
 .btn-secondary {
@@ -118,10 +100,6 @@ button:disabled {
   flex-direction: column;
   gap: 0.75rem;
   margin: 1.5rem 0;
-}
-
-.btn-group .btn-primary {
-  margin: 0;
 }
 
 .connection-status {
@@ -308,26 +286,18 @@ textarea:focus {
   margin-top: 2rem;
 }
 
-.action-buttons button {
-  width: 100%;
-}
-
 @media (min-width: 768px) {
   .btn-group {
     flex-direction: row;
   }
-
-  .btn-group .btn-primary {
+  
+  .btn-group button {
     flex: 1;
     min-width: 0;
   }
-
+  
   .action-buttons {
     flex-direction: row-reverse;
-  }
-
-  .action-buttons button {
-    min-width: 160px;
   }
 }
 
