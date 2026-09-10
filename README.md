@@ -2,23 +2,34 @@
 
 CalendAI lets you type natural-language plans and add them to Google Calendar. (https://calendai.pages.dev)
 
-Example requests:
+## Features
+
+- **Natural language scheduling** - Describe events in plain English
+- **Event management** - Create, edit, and delete calendar events
+- **Multi-date/time support** - Schedule multiple events at once (e.g., "Class on 1, 2, 7 August at 10am")
+- **Dark mode** - Optimized for mobile with dark theme
+- **PWA support** - Install as a standalone app on your phone
+- **Multiple calendars** - Choose which calendar to add events to
+
+## Example requests
 
 - CS2040S on 1, 2, 7 and 8 August at 10am
 - Team sync tomorrow at 2pm for 30 minutes
 - Workout every Monday at 7pm for 90 minutes
+- Cancel CS2040S on 2 August
+- Move team sync tomorrow to 3pm
 
 ## Use the app
 
-1. Open the app frontend.
-2. Click Connect Google Calendar.
+1. Open [calendai.pages.dev](https://calendai.pages.dev) on your phone or desktop.
+2. Click **Connect Google Calendar**.
 3. Complete Google sign-in and consent.
-4. Enter your request.
-5. Click Schedule to generate a preview.
-6. Verify title, dates, time, and duration.
-7. Click Confirm and Add to Calendar.
+4. Enter your request in natural language.
+5. Click **Submit** to parse the request.
+6. Verify the preview (dates, time, duration).
+7. Click **Confirm & Add to Calendar**.
 
-If successful, events are created in your Google Calendar.
+For edit/delete actions, the app will show matching events for you to select.
 
 ## What to expect
 
@@ -26,62 +37,59 @@ If successful, events are created in your Google Calendar.
 - Logout is available from the UI.
 - Sessions expire after 30 days of inactivity.
 - Session expiry is rolling: active use keeps you logged in.
-- Event duration is supported through durationMinutes.
-  If no duration is detected, default is 60 minutes.
+- Event duration defaults to 60 minutes if not specified.
+- Events are added to your primary calendar by default.
 
-## Current features
+## Tech stack
 
-- Natural language processing
-- Adding events to calendars
-- Persistent login
-- Edit, delete capabilities
+- **Frontend**: React, TypeScript, Vite, Cloudflare Pages
+- **Backend**: Cloudflare Workers (TypeScript)
+- **Database**: Cloudflare D1
+- **AI**: Groq API (GPT-OSS-20b)
 
-## Planned to add
+## Development
 
-- UI updates
-- PWA support
+### Frontend
 
-## Troubleshooting
+```bash
+cd frontend
+npm run dev
+```
 
-If Connect Google Calendar works but adding events fails:
+### Backend
 
-- Ensure VITE_BACKEND_URL points to your deployed Worker.
-- Ensure FRONTEND_URL matches your deployed frontend URL.
-- Ensure GOOGLE_REDIRECT_URI exactly matches your Worker callback URL.
-- Check the app status message under Confirm and Add to Calendar.
+```bash
+cd backend
+npx wrangler dev
+```
 
-If logout redirects to the wrong host:
+## Deployment
 
-- Verify FRONTEND_URL in Worker variables.
+The app is automatically deployed via Cloudflare Pages.
 
-If login works in normal Chrome but not in incognito/private mode:
+### Backend deploy
 
-- Your browser may block cross-site cookies.
-  This is expected with pages.dev and workers.dev cross-origin setups.
+```bash
+cd backend
+npx wrangler deploy
+```
 
-## Security and privacy
+## Security
 
 - Access and refresh tokens are never stored in frontend state.
 - Refresh tokens are encrypted before storing in D1.
 - Session cookies are HttpOnly.
-- Do not commit backend/.dev.vars, frontend/.env.local, or any credentials.
-
-If any secret was exposed, rotate it immediately.
+- Do not commit `backend/.dev.vars`, `frontend/.env.local`, or any credentials.
+- If any secret is exposed, rotate it immediately.
 
 ## Project operator quick setup
 
-This section is for maintainers deploying and operating the app.
-
 ### Frontend (Cloudflare Pages)
 
-- Root directory: frontend
-- Build command: npm run build
-- Build output directory: dist
-- Production variable:
-
-```text
-VITE_BACKEND_URL=https://your-worker.workers.dev
-```
+- Root directory: `frontend`
+- Build command: `npm run build`
+- Build output directory: `dist`
+- Production variable: `VITE_BACKEND_URL=https://your-worker.workers.dev`
 
 ### Backend (Cloudflare Worker)
 
@@ -107,16 +115,10 @@ GOOGLE_REDIRECT_URI=https://your-worker.workers.dev/oauth/callback
 npx wrangler d1 migrations apply calendai-db --remote
 ```
 
-### Deploy backend
-
-```bash
-npx wrangler deploy
-```
-
 ### Google OAuth redirect URI
 
-Add this exact URI to the OAuth client:
+Add this exact URI to your OAuth client:
 
-```text
+```
 https://your-worker.workers.dev/oauth/callback
 ```
